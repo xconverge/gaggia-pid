@@ -6,20 +6,6 @@
 #include <ESP8266WiFi.h>
 #include <PID_v1.h>
 
-float tempActual = 0;
-
-// Start heating the boiler when powered on
-bool operMode = true;
-
-const int maxRunTime = 180;  // Don't keep the boiler hot after this many minutes
-double tempDesired = 215;    // This will be the current desired setpoint
-const int WindowSize = 5000; // PID PWM Window in milliseconds
-
-// Define the PID tuning Parameters
-double Kp = 4.5;
-double Ki = 0.125;
-double Kd = 0.2;
-
 // hardware pinout
 int relayPin = 0; // D3
 
@@ -27,6 +13,20 @@ int maxCLK = 14; // D5
 int maxSDO = 12; // D6
 int maxSDI = 13; // D7
 int maxCS = 4;   // D2
+
+// This will be the current desired setpoint
+double tempDesired = 215;
+
+// This will be the latest actual reading
+double tempActual = 0;
+
+// PID PWM Window in milliseconds
+const int WindowSize = 5000;
+
+// Define the PID tuning Parameters
+double Kp = 4.5;
+double Ki = 0.125;
+double Kd = 0.2;
 
 // Use software SPI: CS, DI, DO, CLK
 Adafruit_MAX31865 thermo = Adafruit_MAX31865(maxCS, maxSDI, maxSDO, maxCLK);
@@ -39,9 +39,6 @@ float RNOMINAL = 100.0;
 
 // All timers reference the value of now
 unsigned long now = millis(); //This variable is used to keep track of time
-int runTimeMins;
-long runTimeSecs;
-unsigned long runTimeStart = now;
 
 ESP8266WebServer server(80);
 
@@ -68,8 +65,11 @@ float getTemp()
   Serial.println(RREF * ratio, 8);
   Serial.print("Temperature = ");
 
-  float tempActual = thermo.temperature(RNOMINAL, RREF);
-  Serial.println(tempActual);
+  float temp = thermo.temperature(RNOMINAL, RREF);
+  // Convert from C to F
+  temp = (9.0/5.0) * temp + 32.0;
+
+  Serial.println(temp);
 
   // Check and print any faults
   uint8_t fault = thermo.readFault();
@@ -103,19 +103,11 @@ float getTemp()
     }
     thermo.clearFault();
   }
-  Serial.println();
 
-  return tempActual;
+  return temp;
 }
 
-void keepTime(void)
-{
-  now = millis(); //Keep track of time
-  runTimeSecs = (now - runTimeStart) / 1000;
-  runTimeMins = (now - runTimeStart) / 60000;
-}
-
-// Round down a float to 2 decimal places
+// Round down to 2 decimal places
 double round2(double value)
 {
   return (int)(value * 100 + 0.5) / 100.0;
@@ -125,7 +117,6 @@ char *genJSON()
 {
   DynamicJsonDocument doc(256);
   doc["Uptime"] = now / 1000;
-  doc["Runtime"] = runTimeSecs;
   doc["Setpoint"] = round2(tempDesired);
   doc["ActualTemp"] = round2(tempActual);
 
@@ -138,60 +129,30 @@ void handleJSON()
   server.send(200, "application/json", String(genJSON()));
 }
 
-// unless true is specified, default to false
-bool enablePID(bool enable = false)
-{
-  if (enable == false)
-  {
-    // de-activate the relay
-    digitalWrite(relayPin, LOW);
-    // set PID mode to manual mode
-    myPID.SetMode(MANUAL);
-    // Force PID output to 0
-    Output = 0;
-    // set operation mode to false
-    operMode = false;
-  }
-  else if (enable == true)
-  {
-    myPID.SetMode(AUTOMATIC);
-    runTimeStart = now;
-    operMode = true;
-  }
-}
-
 void controlRelay()
 {
   // Provide the PID loop with the current temperature
   Input = tempActual;
 
-  // If we've reached maxRunTime, disable the PID control
-  if (runTimeMins >= maxRunTime && operMode)
+  myPID.Compute();
+
+  // Starts a new PWM cycle every WindowSize milliseconds
+  if (WindowSize < (now - windowStartTime))
   {
-    enablePID(false);
-  }
-  else if (!myPID.GetMode() && operMode)
-  {
-    // Set the PID back to Automatic mode if operMode is true
-    enablePID(true);
+    windowStartTime += WindowSize;
   }
 
-  if (operMode)
+  // Calculate the number of milliseconds that have passed in the current PWM cycle.
+  // If that is less than the Output value, the relay is turned ON
+  // If that is greater than (or equal to) the Output value, the relay is turned OFF.
+  PWMOutput = Output * (WindowSize / 100.00);
+  if ((PWMOutput > 100) && (PWMOutput > (now - windowStartTime)))
   {
-    myPID.Compute();
-
-    // Starts a new PWM cycle every WindowSize milliseconds
-    if (WindowSize < now - windowStartTime)
-      windowStartTime += WindowSize;
-
-    // Calculate the number of milliseconds that have passed in the current PWM cycle.
-    // If that is less than the Output value, the relay is turned ON
-    // If that is greater than (or equal to) the Output value, the relay is turned OFF.
-    PWMOutput = Output * (WindowSize / 100.00);
-    if ((PWMOutput > 100) && (PWMOutput > (now - windowStartTime)))
-      digitalWrite(relayPin, HIGH);
-    else
-      digitalWrite(relayPin, LOW);
+    digitalWrite(relayPin, HIGH);
+  }
+  else
+  {
+    digitalWrite(relayPin, LOW);
   }
 }
 
@@ -235,7 +196,7 @@ void setup()
 
 void loop()
 {
-  keepTime();
+  now = millis();
   tempActual = getTemp();
 
   controlRelay();
