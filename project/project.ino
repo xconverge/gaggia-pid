@@ -5,7 +5,8 @@
 #include <ESP8266WebServer.h>
 #include <ESP8266WiFi.h>
 
-double Setpoint = 215;
+float tempActual = 0;
+double tempDesired = 215;
 
 // hardware pinout
 int relayPin = 0; // D3
@@ -95,12 +96,19 @@ void keepTime(void)
   runTimeMins = (now - runTimeStart) / 60000;
 }
 
+// Round down a float to 2 decimal places
+double round2(double value)
+{
+  return (int)(value * 100 + 0.5) / 100.0;
+}
+
 char *genJSON()
 {
   DynamicJsonDocument doc(256);
   doc["Uptime"] = now / 1000;
   doc["Runtime"] = runTimeSecs;
-  doc["Setpoint"] = Setpoint;
+  doc["Setpoint"] = round2(tempDesired);
+  doc["ActualTemp"] = round2(tempActual);
 
   serializeJson(doc, jsonresult);
   return jsonresult;
@@ -151,7 +159,9 @@ void setup()
 void loop()
 {
   keepTime();
-  float currentTemp = getTemp();
+  tempActual = getTemp();
+
+  controlRelay();
 
   server.handleClient();
   delay(1000);
