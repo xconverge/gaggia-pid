@@ -4,9 +4,21 @@
 #include <ArduinoJson.h>
 #include <ESP8266WebServer.h>
 #include <ESP8266WiFi.h>
+#include <PID_v1.h>
 
 float tempActual = 0;
-double tempDesired = 215;
+
+// Start heating the boiler when powered on
+bool operMode = true;
+
+const int maxRunTime = 180;  // Don't keep the boiler hot after this many minutes
+double tempDesired = 215;    // This will be the current desired setpoint
+const int WindowSize = 5000; // PID PWM Window in milliseconds
+
+// Define the PID tuning Parameters
+double Kp = 4.5;
+double Ki = 0.125;
+double Kd = 0.2;
 
 // hardware pinout
 int relayPin = 0; // D3
@@ -34,6 +46,13 @@ unsigned long runTimeStart = now;
 ESP8266WebServer server(80);
 
 char jsonresult[512];
+
+// PID variables
+// Using P_ON_M mode ( http://brettbeauregard.com/blog/2017/06/introducing-proportional-on-measurement/ )
+double Input, Output;
+PID myPID(&Input, &Output, &tempDesired, Kp, Ki, Kd, P_ON_M, DIRECT);
+double PWMOutput;
+unsigned long windowStartTime;
 
 float getTemp()
 {
@@ -119,6 +138,63 @@ void handleJSON()
   server.send(200, "application/json", String(genJSON()));
 }
 
+// unless true is specified, default to false
+bool enablePID(bool enable = false)
+{
+  if (enable == false)
+  {
+    // de-activate the relay
+    digitalWrite(relayPin, LOW);
+    // set PID mode to manual mode
+    myPID.SetMode(MANUAL);
+    // Force PID output to 0
+    Output = 0;
+    // set operation mode to false
+    operMode = false;
+  }
+  else if (enable == true)
+  {
+    myPID.SetMode(AUTOMATIC);
+    runTimeStart = now;
+    operMode = true;
+  }
+}
+
+void controlRelay()
+{
+  // Provide the PID loop with the current temperature
+  Input = tempActual;
+
+  // If we've reached maxRunTime, disable the PID control
+  if (runTimeMins >= maxRunTime && operMode)
+  {
+    enablePID(false);
+  }
+  else if (!myPID.GetMode() && operMode)
+  {
+    // Set the PID back to Automatic mode if operMode is true
+    enablePID(true);
+  }
+
+  if (operMode)
+  {
+    myPID.Compute();
+
+    // Starts a new PWM cycle every WindowSize milliseconds
+    if (WindowSize < now - windowStartTime)
+      windowStartTime += WindowSize;
+
+    // Calculate the number of milliseconds that have passed in the current PWM cycle.
+    // If that is less than the Output value, the relay is turned ON
+    // If that is greater than (or equal to) the Output value, the relay is turned OFF.
+    PWMOutput = Output * (WindowSize / 100.00);
+    if ((PWMOutput > 100) && (PWMOutput > (now - windowStartTime)))
+      digitalWrite(relayPin, HIGH);
+    else
+      digitalWrite(relayPin, LOW);
+  }
+}
+
 void setup()
 {
   Serial.begin(115200);
@@ -136,7 +212,8 @@ void setup()
   WiFi.mode(WIFI_STA);
   WiFi.begin(ssid, password);
 
-  while (WiFi.status() != WL_CONNECTED) {
+  while (WiFi.status() != WL_CONNECTED)
+  {
     delay(500);
     Serial.print(".");
   }
@@ -163,6 +240,6 @@ void loop()
 
   controlRelay();
 
+  delay(0);
   server.handleClient();
-  delay(1000);
 }
