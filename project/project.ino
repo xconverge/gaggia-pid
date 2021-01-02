@@ -2,8 +2,10 @@
 
 #include <Adafruit_MAX31865.h>
 #include <ArduinoJson.h>
+#include <ESP8266WebServer.h>
 #include <ESP8266WiFi.h>
-#include <PID_v1.h>
+
+double Setpoint = 215;
 
 // hardware pinout
 int relayPin = 0; // D3
@@ -22,26 +24,15 @@ float RREF = 430.0;
 // 100.0 for PT100, 1000.0 for PT1000
 float RNOMINAL = 100.0;
 
-void setup()
-{
-  Serial.begin(115200);
-  Serial.println("Starting...");
+// All timers reference the value of now
+unsigned long now = millis(); //This variable is used to keep track of time
+int runTimeMins;
+long runTimeSecs;
+unsigned long runTimeStart = now;
 
-  // Set the Relay to output mode and ensure the relay is off
-  pinMode(relayPin, OUTPUT);
-  digitalWrite(relayPin, LOW);
+ESP8266WebServer server(80);
 
-  thermo.begin(MAX31865_3WIRE);
-
-  // Wifi client mode
-  String ssid = WIFI_SSID;
-  String password = WIFI_PASSWORD;
-  WiFi.mode(WIFI_STA);
-  WiFi.begin(ssid, password);
-
-  unsigned long bootTime = millis();
-  Serial.println("Booted after " + String(bootTime / 1000.0) + " seconds");
-}
+char jsonresult[512];
 
 float getTemp()
 {
@@ -97,8 +88,71 @@ float getTemp()
   return tempActual;
 }
 
+void keepTime(void)
+{
+  now = millis(); //Keep track of time
+  runTimeSecs = (now - runTimeStart) / 1000;
+  runTimeMins = (now - runTimeStart) / 60000;
+}
+
+char *genJSON()
+{
+  DynamicJsonDocument doc(256);
+  doc["Uptime"] = now / 1000;
+  doc["Runtime"] = runTimeSecs;
+  doc["Setpoint"] = Setpoint;
+
+  serializeJson(doc, jsonresult);
+  return jsonresult;
+}
+
+void handleJSON()
+{
+  server.send(200, "application/json", String(genJSON()));
+}
+
+void setup()
+{
+  Serial.begin(115200);
+  Serial.println("Starting...");
+
+  // Set the Relay to output mode and ensure the relay is off
+  pinMode(relayPin, OUTPUT);
+  digitalWrite(relayPin, LOW);
+
+  thermo.begin(MAX31865_3WIRE);
+
+  // Wifi client mode
+  String ssid = WIFI_SSID;
+  String password = WIFI_PASSWORD;
+  WiFi.mode(WIFI_STA);
+  WiFi.begin(ssid, password);
+
+  while (WiFi.status() != WL_CONNECTED) {
+    delay(500);
+    Serial.print(".");
+  }
+
+  Serial.println("");
+  Serial.print("Connected to ");
+  Serial.println(ssid);
+  Serial.print("IP address: ");
+  Serial.println(WiFi.localIP());
+
+  server.on("/json", handleJSON);
+  // Start server
+  server.begin();
+  Serial.println("HTTP server started");
+
+  unsigned long bootTime = millis();
+  Serial.println("Booted after " + String(bootTime / 1000.0) + " seconds");
+}
+
 void loop()
 {
+  keepTime();
   float currentTemp = getTemp();
+
+  server.handleClient();
   delay(1000);
 }
