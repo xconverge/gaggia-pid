@@ -205,6 +205,24 @@ void controlRelay()
   }
 }
 
+void writeConfigValuesToEEPROM()
+{
+  // Store config values to eeprom
+  EEPROM.begin(sizeof(double) * 4);
+
+  int EEaddress = 0;
+
+  EEPROM.put(EEaddress, tempDesired);
+  EEaddress += sizeof(tempDesired);
+  EEPROM.put(EEaddress, Kp);
+  EEaddress += sizeof(Kp);
+  EEPROM.put(EEaddress, Ki);
+  EEaddress += sizeof(Ki);
+  EEPROM.put(EEaddress, Kd);
+  EEPROM.commit();
+  EEPROM.end();
+}
+
 void setup()
 {
   Serial.begin(115200);
@@ -243,24 +261,8 @@ void setup()
 
   // Initialize the target setpoint and PID parameters
   EEPROM.begin(sizeof(double) * 4);
-
-  int EEaddress = 0;
-
-  if (false)
-  {
-    // Write configuration values to eeprom
-    EEPROM.put(EEaddress, tempDesired);
-    EEaddress += sizeof(tempDesired);
-    EEPROM.put(EEaddress, Kp);
-    EEaddress += sizeof(Kp);
-    EEPROM.put(EEaddress, Ki);
-    EEaddress += sizeof(Ki);
-    EEPROM.put(EEaddress, Kd);
-    EEPROM.commit();
-  }
-
   // Read configuration values from eeprom
-  EEaddress = 0;
+  int EEaddress = 0;
   EEPROM.get(EEaddress, tempDesired);
   EEaddress += sizeof(tempDesired);
   EEPROM.get(EEaddress, Kp);
@@ -269,6 +271,8 @@ void setup()
   EEaddress += sizeof(Ki);
   EEPROM.get(EEaddress, Kd);
   EEPROM.end();
+
+  // TODO SK: Validate the config values
 
   unsigned long bootTime = millis();
   Serial.println("Booted after " + String(bootTime / 1000.0) + " seconds");
