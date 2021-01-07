@@ -178,6 +178,13 @@ void handleSetvals()
   server.send(200, "text/plain", message);
 }
 
+void handleSave()
+{
+  writeConfigValuesToEEPROM();
+
+  server.send(200, "text/plain", "Wrote config to EEPROM.");
+}
+
 void controlRelay()
 {
   // Provide the PID loop with the current temperature
@@ -254,6 +261,7 @@ void setup()
 
   server.on("/json", handleJSON);
   server.on("/set", HTTP_POST, handleSetvals);
+  server.on("/save", HTTP_POST, handleSave);
 
   // Start server
   server.begin();
