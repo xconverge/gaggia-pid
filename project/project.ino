@@ -5,6 +5,7 @@
 #include <ESP8266WebServer.h>
 #include <ESP8266WiFi.h>
 #include <PID_v1.h>
+#include <EEPROM.h>
 
 // hardware pinout
 int relayPin = 0; // D3
@@ -67,7 +68,7 @@ float getTemp()
 
   float temp = thermo.temperature(RNOMINAL, RREF);
   // Convert from C to F
-  temp = (9.0/5.0) * temp + 32.0;
+  temp = (9.0 / 5.0) * temp + 32.0;
 
   Serial.println(temp);
 
@@ -119,6 +120,9 @@ char *genJSON()
   doc["Uptime"] = now / 1000;
   doc["Setpoint"] = round2(tempDesired);
   doc["ActualTemp"] = round2(tempActual);
+  doc["Kp"] = round2(Kp);
+  doc["Ki"] = round2(Ki);
+  doc["Kd"] = round2(Kd);
 
   serializeJson(doc, jsonresult);
   return jsonresult;
@@ -149,6 +153,28 @@ void handleSetvals()
       message += "Setpoint: " + String(setpoint_val) + " is invalid\n";
     }
   }
+
+  String kp_val = server.arg("kp");
+  if (kp_val != NULL)
+  {
+    Kp = kp_val.toFloat();
+    message += "Kp: " + kp_val;
+  }
+
+  String ki_val = server.arg("ki");
+  if (ki_val != NULL)
+  {
+    Ki = ki_val.toFloat();
+    message += "Ki: " + ki_val;
+  }
+
+  String kd_val = server.arg("kd");
+  if (kd_val != NULL)
+  {
+    Kd = kd_val.toFloat();
+    message += "Kd: " + kd_val;
+  }
+
   server.send(200, "text/plain", message);
 }
 
@@ -214,6 +240,32 @@ void setup()
   // Start server
   server.begin();
   Serial.println("HTTP server started");
+
+  // Initialize the target setpoint and PID parameters
+  EEPROM.begin(sizeof(double) * 4);
+
+  int EEaddress = 0;
+
+  if (true)
+  {
+    // Write configuration values to eeprom
+    EEaddress += EEPROM.put(EEaddress, tempDesired);
+    EEaddress += EEPROM.put(EEaddress, Kp);
+    EEaddress += EEPROM.put(EEaddress, Ki);
+    EEaddress += EEPROM.put(EEaddress, Kd);
+    EEPROM.commit();
+  }
+
+  // Read configuration values from eeprom
+  EEaddress = 0;
+  EEPROM.get(EEaddress, tempDesired);
+  EEaddress += sizeof(tempDesired);
+  EEPROM.get(EEaddress, Kp);
+  EEaddress += sizeof(Kp);
+  EEPROM.get(EEaddress, Ki);
+  EEaddress += sizeof(Ki);
+  EEPROM.get(EEaddress, Kd);
+  EEPROM.end();
 
   unsigned long bootTime = millis();
   Serial.println("Booted after " + String(bootTime / 1000.0) + " seconds");
