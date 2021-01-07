@@ -246,13 +246,16 @@ void setup()
 
   int EEaddress = 0;
 
-  if (true)
+  if (false)
   {
     // Write configuration values to eeprom
-    EEaddress += EEPROM.put(EEaddress, tempDesired);
-    EEaddress += EEPROM.put(EEaddress, Kp);
-    EEaddress += EEPROM.put(EEaddress, Ki);
-    EEaddress += EEPROM.put(EEaddress, Kd);
+    EEPROM.put(EEaddress, tempDesired);
+    EEaddress += sizeof(tempDesired);
+    EEPROM.put(EEaddress, Kp);
+    EEaddress += sizeof(Kp);
+    EEPROM.put(EEaddress, Ki);
+    EEaddress += sizeof(Ki);
+    EEPROM.put(EEaddress, Kd);
     EEPROM.commit();
   }
 
