@@ -129,6 +129,29 @@ void handleJSON()
   server.send(200, "application/json", String(genJSON()));
 }
 
+void handleSetvals()
+{
+  String message;
+
+  String setpoint_val = server.arg("setpoint");
+
+  if (setpoint_val != NULL)
+  {
+    double setpoint_tmp = setpoint_val.toFloat();
+    if (setpoint_tmp <= 221.1 && setpoint_tmp > 0.1)
+    {
+      tempDesired = setpoint_tmp;
+      message += "Setpoint: " + setpoint_val;
+      message += "\n";
+    }
+    else
+    {
+      message += "Setpoint: " + String(setpoint_val) + " is invalid\n";
+    }
+  }
+  server.send(200, "text/plain", message);
+}
+
 void controlRelay()
 {
   // Provide the PID loop with the current temperature
@@ -186,6 +209,8 @@ void setup()
   Serial.println(WiFi.localIP());
 
   server.on("/json", handleJSON);
+  server.on("/set", HTTP_POST, handleSetvals);
+
   // Start server
   server.begin();
   Serial.println("HTTP server started");
@@ -197,9 +222,9 @@ void setup()
 void loop()
 {
   now = millis();
-  tempActual = getTemp();
+  // tempActual = getTemp();
 
-  controlRelay();
+  // controlRelay();
 
   delay(0);
   server.handleClient();
