@@ -6,6 +6,7 @@
 #include <ESP8266WiFi.h>
 #include <PID_v1.h>
 #include <EEPROM.h>
+#include <PID_AutoTune_v0.h>
 
 // hardware pinout
 int relayPin = 0; // D3
@@ -51,6 +52,13 @@ double Input, Output;
 PID myPID(&Input, &Output, &tempDesired, Kp, Ki, Kd, P_ON_M, DIRECT);
 double PWMOutput;
 unsigned long windowStartTime;
+
+// PID Autotune parameters
+byte ATuneModeRemember = 2;
+double aTuneStep = 50, aTuneNoise = 1, aTuneStartValue = 100;
+unsigned int aTuneLookBack = 20;
+boolean tuning = false;
+PID_ATune aTune(&Input, &Output);
 
 float getTemp()
 {
@@ -108,6 +116,37 @@ float getTemp()
   return temp;
 }
 
+void enableAutoTune(boolean enable)
+{
+  tuning = enable;
+
+  if (enable)
+  {
+    //Set the output to the desired starting frequency.
+    Output = aTuneStartValue;
+    aTune.SetNoiseBand(aTuneNoise);
+    aTune.SetOutputStep(aTuneStep);
+    aTune.SetLookbackSec((int)aTuneLookBack);
+    AutoTuneHelper(true);
+  }
+  else
+  {
+    //cancel autotune
+    aTune.Cancel();
+    AutoTuneHelper(false);
+  }
+}
+
+void AutoTuneHelper(boolean start)
+{
+  if (start){
+    ATuneModeRemember = myPID.GetMode();
+  }
+  else{
+    myPID.SetMode(ATuneModeRemember);
+  }
+}
+
 // Round down to 2 decimal places
 double round2(double value)
 {
@@ -123,6 +162,7 @@ char *genJSON()
   doc["Kp"] = round2(Kp);
   doc["Ki"] = round2(Ki);
   doc["Kd"] = round2(Kd);
+  doc["autotuning"] = tuning;
 
   serializeJson(doc, jsonresult);
   return jsonresult;
@@ -185,12 +225,44 @@ void handleSave()
   server.send(200, "text/plain", "Wrote config to EEPROM.");
 }
 
+void handleAutotuneStart()
+{
+  enableAutoTune(true);
+  server.send(200, "text/plain", "Autotune started.");
+}
+
+void handleAutotuneStop()
+{
+  enableAutoTune(false);
+  server.send(200, "text/plain", "Autotune stopped.");
+}
+
 void controlRelay()
 {
   // Provide the PID loop with the current temperature
   Input = tempActual;
 
-  myPID.Compute();
+  if (tuning)
+  {
+    byte val = (aTune.Runtime());
+    if (val != 0)
+    {
+      tuning = false;
+    }
+    if (!tuning)
+    {
+      // We're done, set the tuning parameters
+      Kp = aTune.GetKp();
+      Ki = aTune.GetKi();
+      Kd = aTune.GetKd();
+      myPID.SetTunings(Kp, Ki, Kd);
+      AutoTuneHelper(false);
+    }
+  }
+  else
+  {
+    myPID.Compute();
+  }
 
   // Starts a new PWM cycle every WindowSize milliseconds
   if (WindowSize < (now - windowStartTime))
@@ -262,6 +334,8 @@ void setup()
   server.on("/json", handleJSON);
   server.on("/set", HTTP_POST, handleSetvals);
   server.on("/save", HTTP_POST, handleSave);
+  server.on("/autotunestart", HTTP_POST, handleAutotuneStart);
+  server.on("/autotunestop", HTTP_POST, handleAutotuneStop);
 
   // Start server
   server.begin();
