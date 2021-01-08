@@ -17,10 +17,13 @@ int maxSDI = 13; // D7
 int maxCS = 4;   // D2
 
 // This will be the current desired setpoint
-double tempDesired = 215;
+double tempDesired = 220;
 
 // This will be the latest actual reading
 double tempActual = 0;
+
+// Safety value, will always turn off the relay if this is exceeded
+double maxBoilerTemp = 280;
 
 // PID PWM Window in milliseconds
 const int WindowSize = 5000;
@@ -139,10 +142,12 @@ void enableAutoTune(boolean enable)
 
 void AutoTuneHelper(boolean start)
 {
-  if (start){
+  if (start)
+  {
     ATuneModeRemember = myPID.GetMode();
   }
-  else{
+  else
+  {
     myPID.SetMode(ATuneModeRemember);
   }
 }
@@ -241,6 +246,13 @@ void controlRelay()
 {
   // Provide the PID loop with the current temperature
   Input = tempActual;
+
+  // Safety to turn off if max temp is exceeded
+  if (Input >= maxBoilerTemp)
+  {
+    digitalWrite(relayPin, LOW);
+    return;
+  }
 
   if (tuning)
   {
@@ -363,9 +375,9 @@ void setup()
 void loop()
 {
   now = millis();
-  // tempActual = getTemp();
+  tempActual = getTemp();
 
-  // controlRelay();
+  controlRelay();
 
   delay(0);
   server.handleClient();
