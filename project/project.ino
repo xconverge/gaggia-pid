@@ -2,11 +2,12 @@
 
 #include <Adafruit_MAX31865.h>
 #include <ArduinoJson.h>
+#include <EEPROM.h>
 #include <ESP8266WebServer.h>
 #include <ESP8266WiFi.h>
-#include <PID_v1.h>
-#include <EEPROM.h>
+#include <MQTT.h> // https://github.com/256dpi/arduino-mqtt
 #include <PID_AutoTune_v0.h>
+#include <PID_v1.h>
 
 // hardware pinout
 int relayPin = 0; // D3
@@ -46,6 +47,12 @@ float RNOMINAL = 100.0;
 unsigned long now = millis(); //This variable is used to keep track of time
 
 ESP8266WebServer server(80);
+
+boolean useMQTT = true;
+WiFiClient net;
+MQTTClient mqttClient;
+unsigned long previousMqttStatsMillis = now;
+unsigned long mqttStatsInterval = 1000;
 
 char jsonresult[512];
 
@@ -314,6 +321,11 @@ void writeConfigValuesToEEPROM()
   EEPROM.end();
 }
 
+void messageReceived(String &topic, String &payload)
+{
+  Serial.println("incoming: " + topic + " - " + payload);
+}
+
 void setup()
 {
   Serial.begin(115200);
@@ -368,6 +380,23 @@ void setup()
 
   // TODO SK: Validate the config values
 
+  if (useMQTT)
+  {
+    // Start MQTT client
+    mqttClient.begin(MQTT_HOST, net);
+    mqttClient.onMessage(messageReceived);
+
+    Serial.print("\nconnecting...");
+    while (!mqttClient.connect("espresso"))
+    {
+      Serial.print(".");
+      delay(1000);
+    }
+    Serial.println("\nconnected!");
+
+    mqttClient.subscribe("/status");
+  }
+
   unsigned long bootTime = millis();
   Serial.println("Booted after " + String(bootTime / 1000.0) + " seconds");
 }
@@ -379,6 +408,18 @@ void loop()
 
   controlRelay();
 
-  delay(0);
   server.handleClient();
+
+  if (useMQTT)
+  {
+    // Publish status via mqtt
+    mqttClient.loop();
+    if (now - previousMqttStatsMillis > mqttStatsInterval)
+    {
+      mqttClient.publish("/status", genJSON());
+      previousMqttStatsMillis = now;
+    }
+  }
+
+  delay(0);
 }
