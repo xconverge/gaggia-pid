@@ -1,0 +1,22 @@
+- platform: rest
+  name: espresso stats
+  json_attributes:
+    - Uptime
+    - Setpoint
+    - ActualTemp
+  resource: http://xxx.xxx.xxx.xxx/json
+  value_template: "{{ value_json.Mode }}"
+  scan_interval: 1
+- platform: template
+  sensors:
+    espresso_runtime:
+      friendly_name: "runtime"
+      value_template: '{{ ( states.sensor.espresso_stats.attributes["Uptime"] / 60 ) | round(0) }}'
+    espresso_temp_actual:
+      friendly_name: "tempactual"
+      value_template: '{{ states.sensor.espresso_stats.attributes["ActualTemp"] }}'
+      unit_of_measurement: 'degrees'
+    espresso_temp_desired:
+      friendly_name: "tempdesired"
+      value_template: '{{ states.sensor.espresso_stats.attributes["Setpoint"] }}'
+      unit_of_measurement: 'degrees'
