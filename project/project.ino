@@ -75,21 +75,25 @@ float getTemp()
 {
   uint16_t rtd = thermo.readRTD();
 
-  Serial.print("RTD value: ");
-  Serial.println(rtd);
-  float ratio = rtd;
-  ratio /= 32768;
-  Serial.print("Ratio = ");
-  Serial.println(ratio, 8);
-  Serial.print("Resistance = ");
-  Serial.println(RREF * ratio, 8);
-  Serial.print("Temperature = ");
-
   float temp = thermo.temperature(RNOMINAL, RREF);
+
   // Convert from C to F
   temp = (9.0 / 5.0) * temp + 32.0;
 
-  Serial.println(temp);
+  bool debugPrints = false;
+  if (debugPrints)
+  {
+    Serial.print("RTD value: ");
+    Serial.println(rtd);
+    float ratio = rtd;
+    ratio /= 32768;
+    Serial.print("Ratio = ");
+    Serial.println(ratio, 8);
+    Serial.print("Resistance = ");
+    Serial.println(RREF * ratio, 8);
+    Serial.print("Temperature = ");
+    Serial.println(temp);
+  }
 
   // Check and print any faults
   uint8_t fault = thermo.readFault();
@@ -122,6 +126,8 @@ float getTemp()
       Serial.println("Under/Over voltage");
     }
     thermo.clearFault();
+
+    temp = 9999;
   }
 
   return temp;
@@ -133,7 +139,7 @@ void enableAutoTune(boolean enable)
 
   if (enable)
   {
-    //Set the output to the desired starting frequency.
+    // Set the output to the desired starting frequency.
     Output = aTuneStartValue;
     aTune.SetNoiseBand(aTuneNoise);
     aTune.SetOutputStep(aTuneStep);
@@ -142,7 +148,7 @@ void enableAutoTune(boolean enable)
   }
   else
   {
-    //cancel autotune
+    // Cancel autotune
     aTune.Cancel();
     AutoTuneHelper(false);
   }
