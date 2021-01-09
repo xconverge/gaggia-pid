@@ -1,0 +1,14 @@
+- platform: mqtt
+  name: espresso runtime
+  state_topic: "espresso/status"
+  value_template: "{{ ( value_json.Uptime / 60 )| round(0)  }}"
+- platform: mqtt
+  name: espresso setpoint
+  state_topic: "espresso/status"
+  value_template: "{{ value_json.Setpoint }}"
+  unit_of_measurement: 'degrees'
+- platform: mqtt
+  name: espresso actual temp
+  state_topic: "espresso/status"
+  value_template: "{{ value_json.ActualTemp }}"
+  unit_of_measurement: 'degrees'

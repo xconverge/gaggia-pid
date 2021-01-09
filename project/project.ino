@@ -394,7 +394,7 @@ void setup()
     }
     Serial.println("\nconnected!");
 
-    mqttClient.subscribe("/status");
+    mqttClient.subscribe("espresso/status");
   }
 
   unsigned long bootTime = millis();
@@ -416,7 +416,7 @@ void loop()
     mqttClient.loop();
     if (now - previousMqttStatsMillis > mqttStatsInterval)
     {
-      mqttClient.publish("/status", genJSON());
+      mqttClient.publish("espresso/status", genJSON());
       previousMqttStatsMillis = now;
     }
   }
