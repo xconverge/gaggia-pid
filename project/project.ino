@@ -54,6 +54,7 @@ WiFiClient net;
 MQTTClient mqttClient;
 unsigned long previousMqttStatsMillis = now;
 unsigned long mqttStatsInterval = 1000;
+String mqttStatusTopicName = "espresso/status";
 
 char jsonresult[512];
 
@@ -401,7 +402,7 @@ void setup()
     if (mqttClient.connected())
     {
       Serial.println("Connected to MQTT broker after " + String(mqttConnectElapsedTime / 1000.0) + " seconds, enabling mqtt!");
-      mqttClient.subscribe("espresso/status");
+      mqttClient.subscribe(mqttStatusTopicName);
     }
     else
     {
@@ -429,7 +430,7 @@ void loop()
     mqttClient.loop();
     if (now - previousMqttStatsMillis > mqttStatsInterval)
     {
-      mqttClient.publish("espresso/status", genJSON());
+      mqttClient.publish(mqttStatusTopicName, genJSON());
       previousMqttStatsMillis = now;
     }
   }
