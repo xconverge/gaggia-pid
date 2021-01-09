@@ -48,6 +48,7 @@ unsigned long now = millis(); //This variable is used to keep track of time
 
 ESP8266WebServer server(80);
 
+// Try to connect to MQTT broker, will disable to false automatically if can't connect to broker
 boolean useMQTT = true;
 WiFiClient net;
 MQTTClient mqttClient;
@@ -386,15 +387,21 @@ void setup()
     mqttClient.begin(MQTT_HOST, net);
     mqttClient.onMessage(messageReceived);
 
-    Serial.print("\nconnecting...");
-    while (!mqttClient.connect("espresso"))
-    {
-      Serial.print(".");
-      delay(1000);
-    }
-    Serial.println("\nconnected!");
+    Serial.println("Trying to connect to MQTT broker...");
+    unsigned long mqttConnectTimeStart = millis();
+    mqttClient.connect("espresso");
+    unsigned long mqttConnectElapsedTime = millis() - mqttConnectTimeStart;
 
-    mqttClient.subscribe("espresso/status");
+    if (mqttClient.connected())
+    {
+      Serial.println("Connected to MQTT broker after " + String(mqttConnectElapsedTime / 1000.0) + " seconds, enabling mqtt!");
+      mqttClient.subscribe("espresso/status");
+    }
+    else
+    {
+      Serial.println("Did not connect to MQTT broker after " + String(mqttConnectElapsedTime / 1000.0) + " seconds, disabling mqtt!");
+      useMQTT = false;
+    }
   }
 
   unsigned long bootTime = millis();
@@ -421,5 +428,5 @@ void loop()
     }
   }
 
-  delay(0);
+  delay(10);
 }
