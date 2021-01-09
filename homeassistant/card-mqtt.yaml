@@ -1,0 +1,28 @@
+cards:
+  - cards:
+      - entity: sensor.espresso_actual_temp
+        icon: 'hass:thermometer'
+        name: Boiler Temp
+        type: entity
+        unit: F
+      - entity: sensor.espresso_runtime
+        icon: 'hass:clock'
+        name: Controller Runtime
+        type: entity
+        unit: Minutes
+    type: horizontal-stack
+  - entities:
+      - entity: switch.smart_outlet
+        icon: 'mdi:coffee'
+        name: Smart Outlet
+        state_color: true
+    show_header_toggle: false
+    title: Espresso Machine
+    type: entities
+  - type: history-graph
+    entities:
+      - entity: sensor.espresso_actual_temp
+      - entity: sensor.espresso_setpoint
+    refresh_interval: 0
+    hours_to_show: 25
+type: vertical-stack
