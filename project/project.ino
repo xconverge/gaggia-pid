@@ -343,6 +343,15 @@ void setup()
   pinMode(relayPin, OUTPUT);
   digitalWrite(relayPin, LOW);
 
+  // PID Window
+  windowStartTime = now;
+  // PID output 0 - 100
+  myPID.SetOutputLimits(0, 100);
+  // PID Samples every 50ms
+  myPID.SetSampleTime(50);
+  // Enable control loop
+  myPID.SetMode(AUTOMATIC);
+
   thermo.begin(MAX31865_3WIRE);
 
   // Wifi client mode
