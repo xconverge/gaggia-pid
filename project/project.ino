@@ -258,7 +258,7 @@ void handleAutotuneStart()
     noise = noise_val.toFloat();
   }
 
-  unsigned int lookback = 60000;
+  unsigned int lookback = 20;
   String lookback_val = server.arg("lookback");
   if (lookback_val != NULL)
   {
@@ -367,6 +367,9 @@ void setup()
   myPID.SetSampleTime(50);
   // Enable control loop
   myPID.SetMode(AUTOMATIC);
+
+  // Set 1 for PID or 0 for PI controller autotuning parameters
+  aTune.SetControlType(1);
 
   thermo.begin(MAX31865_3WIRE);
 
