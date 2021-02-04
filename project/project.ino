@@ -67,8 +67,6 @@ unsigned long windowStartTime;
 
 // PID Autotune parameters
 byte ATuneModeRemember = 2;
-double aTuneStep = 50, aTuneNoise = 1, aTuneStartValue = 100;
-unsigned int aTuneLookBack = 20;
 boolean tuning = false;
 PID_ATune aTune(&Input, &Output);
 
@@ -134,25 +132,23 @@ float getTemp()
   return temp;
 }
 
-void enableAutoTune(boolean enable)
+void enableAutoTune(double step, double noise, int lookback)
 {
-  tuning = enable;
+  tuning = true;
 
-  if (enable)
-  {
-    // Set the output to the desired starting frequency.
-    Output = aTuneStartValue;
-    aTune.SetNoiseBand(aTuneNoise);
-    aTune.SetOutputStep(aTuneStep);
-    aTune.SetLookbackSec((int)aTuneLookBack);
-    AutoTuneHelper(true);
-  }
-  else
-  {
-    // Cancel autotune
-    aTune.Cancel();
-    AutoTuneHelper(false);
-  }
+  aTune.SetNoiseBand(noise);
+  aTune.SetOutputStep(step);
+  aTune.SetLookbackSec(lookback);
+  AutoTuneHelper(true);
+}
+
+void disableAutoTune()
+{
+  tuning = false;
+
+  // Cancel autotune
+  aTune.Cancel();
+  AutoTuneHelper(false);
 }
 
 void AutoTuneHelper(boolean start)
@@ -247,13 +243,36 @@ void handleSave()
 
 void handleAutotuneStart()
 {
-  enableAutoTune(true);
-  server.send(200, "text/plain", "Autotune started.");
+
+  double step = 750;
+  String step_val = server.arg("step");
+  if (step_val != NULL)
+  {
+    step = step_val.toFloat();
+  }
+
+  double noise = 1;
+  String noise_val = server.arg("noise");
+  if (noise_val != NULL)
+  {
+    noise = noise_val.toFloat();
+  }
+
+  unsigned int lookback = 60000;
+  String lookback_val = server.arg("lookback");
+  if (lookback_val != NULL)
+  {
+    lookback = lookback_val.toInt();
+  }
+
+  String message = "Autotune started: noise(" + String(noise) + ") " + "step(" + String(step) + ") lookback(" + String(lookback) + ")";
+  enableAutoTune(step, noise, lookback);
+  server.send(200, "text/plain", message);
 }
 
 void handleAutotuneStop()
 {
-  enableAutoTune(false);
+  disableAutoTune();
   server.send(200, "text/plain", "Autotune stopped.");
 }
 
@@ -271,13 +290,10 @@ void controlRelay()
 
   if (tuning)
   {
-    byte val = (aTune.Runtime());
-    if (val != 0)
+    if (aTune.Runtime())
     {
       tuning = false;
-    }
-    if (!tuning)
-    {
+
       // We're done, set the tuning parameters
       Kp = aTune.GetKp();
       Ki = aTune.GetKi();
