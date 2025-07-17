@@ -17,13 +17,13 @@ int maxSDO = 12;  // D6
 int maxSDI = 13;  // D7
 int maxCS = 4;    // D2
 
-double temporary_steam_temp = 0;  // This will be the temporary steam setpoint
-unsigned long temporary_steam_duration =
-    0;  // This will be the duration in milliseconds for the temporary steam
-        // setpoint
-unsigned long temporary_steam_start_time =
-    0;  // This will be the time in milliseconds when the temporary steam
-        // setpoint was set
+// This will be the temporary steam setpoint
+double temporary_steam_temp = 0;
+// This will be the duration in milliseconds for the temporary steam setpoint
+unsigned long temporary_steam_duration = 0;
+// This will be the time in milliseconds when the temporary steam setpoint was
+// set
+unsigned long temporary_steam_start_time = 0;
 
 // This will be the current desired setpoint
 double tempDesired = 220;
@@ -462,7 +462,9 @@ void loop() {
   // We received a temporary steam setpoint and duration so we need to apply it
   if (temporary_steam_duration != 0 && temporary_steam_temp != 0) {
     // Make sure the PID setpoint is the temporary steam setpoint
-    currentPIDSetpoint = temporary_steam_temp;
+    if (currentPIDSetpoint != temporary_steam_temp) {
+      currentPIDSetpoint = temporary_steam_temp;
+    }
 
     if (temporary_steam_start_time == 0) {
       // If this is the first time we set the temporary steam setpoint, record
@@ -474,8 +476,9 @@ void loop() {
         // If the duration has passed, reset the temporary steam setpoint
         temporary_steam_temp = 0;
         temporary_steam_duration = 0;
-        currentPIDSetpoint =
-            tempDesired;  // Reset to the original desired temperature
+        temporary_steam_start_time = 0;
+        // Reset to the original desired temperature
+        currentPIDSetpoint = tempDesired;
       }
     }
   } else {
