@@ -1,21 +1,21 @@
-#include "secrets.h"
-
 #include <Adafruit_MAX31865.h>
 #include <ArduinoJson.h>
 #include <EEPROM.h>
 #include <ESP8266WebServer.h>
 #include <ESP8266WiFi.h>
-#include <MQTT.h> // https://github.com/256dpi/arduino-mqtt
+#include <MQTT.h>  // https://github.com/256dpi/arduino-mqtt
 #include <PID_AutoTune_v0.h>
 #include <PID_v1.h>
 
-// hardware pinout
-int relayPin = 0; // D3
+#include "secrets.h"
 
-int maxCLK = 14; // D5
-int maxSDO = 12; // D6
-int maxSDI = 13; // D7
-int maxCS = 4;   // D2
+// hardware pinout
+int relayPin = 0;  // D3
+
+int maxCLK = 14;  // D5
+int maxSDO = 12;  // D6
+int maxSDI = 13;  // D7
+int maxCS = 4;    // D2
 
 // This will be the current desired setpoint
 double tempDesired = 220;
@@ -44,11 +44,12 @@ float RREF = 430.0;
 float RNOMINAL = 100.0;
 
 // All timers reference the value of now
-unsigned long now = millis(); //This variable is used to keep track of time
+unsigned long now = millis();  // This variable is used to keep track of time
 
 ESP8266WebServer server(80);
 
-// Try to connect to MQTT broker, will disable to false automatically if can't connect to broker
+// Try to connect to MQTT broker, will disable to false automatically if can't
+// connect to broker
 boolean useMQTT = true;
 WiFiClient net;
 MQTTClient mqttClient;
@@ -59,7 +60,9 @@ String mqttStatusTopicName = "espresso/status";
 char jsonresult[512];
 
 // PID variables
-// Using P_ON_M mode ( http://brettbeauregard.com/blog/2017/06/introducing-proportional-on-measurement/ )
+// Using P_ON_M mode (
+// http://brettbeauregard.com/blog/2017/06/introducing-proportional-on-measurement/
+// )
 double Input, Output;
 PID myPID(&Input, &Output, &tempDesired, Kp, Ki, Kd, P_ON_M, DIRECT);
 double PWMOutput;
@@ -70,8 +73,7 @@ byte ATuneModeRemember = 2;
 boolean tuning = false;
 PID_ATune aTune(&Input, &Output);
 
-float getTemp()
-{
+float getTemp() {
   uint16_t rtd = thermo.readRTD();
 
   float temp = thermo.temperature(RNOMINAL, RREF);
@@ -80,8 +82,7 @@ float getTemp()
   temp = (9.0 / 5.0) * temp + 32.0;
 
   bool debugPrints = false;
-  if (debugPrints)
-  {
+  if (debugPrints) {
     Serial.print("RTD value: ");
     Serial.println(rtd);
     float ratio = rtd;
@@ -96,32 +97,25 @@ float getTemp()
 
   // Check and print any faults
   uint8_t fault = thermo.readFault();
-  if (fault)
-  {
+  if (fault) {
     Serial.print("Fault 0x");
     Serial.println(fault, HEX);
-    if (fault & MAX31865_FAULT_HIGHTHRESH)
-    {
+    if (fault & MAX31865_FAULT_HIGHTHRESH) {
       Serial.println("RTD High Threshold");
     }
-    if (fault & MAX31865_FAULT_LOWTHRESH)
-    {
+    if (fault & MAX31865_FAULT_LOWTHRESH) {
       Serial.println("RTD Low Threshold");
     }
-    if (fault & MAX31865_FAULT_REFINLOW)
-    {
+    if (fault & MAX31865_FAULT_REFINLOW) {
       Serial.println("REFIN- > 0.85 x Bias");
     }
-    if (fault & MAX31865_FAULT_REFINHIGH)
-    {
+    if (fault & MAX31865_FAULT_REFINHIGH) {
       Serial.println("REFIN- < 0.85 x Bias - FORCE- open");
     }
-    if (fault & MAX31865_FAULT_RTDINLOW)
-    {
+    if (fault & MAX31865_FAULT_RTDINLOW) {
       Serial.println("RTDIN- < 0.85 x Bias - FORCE- open");
     }
-    if (fault & MAX31865_FAULT_OVUV)
-    {
+    if (fault & MAX31865_FAULT_OVUV) {
       Serial.println("Under/Over voltage");
     }
     thermo.clearFault();
@@ -132,8 +126,7 @@ float getTemp()
   return temp;
 }
 
-void enableAutoTune(double step, double noise, int lookback)
-{
+void enableAutoTune(double step, double noise, int lookback) {
   tuning = true;
 
   aTune.SetNoiseBand(noise);
@@ -142,8 +135,7 @@ void enableAutoTune(double step, double noise, int lookback)
   AutoTuneHelper(true);
 }
 
-void disableAutoTune()
-{
+void disableAutoTune() {
   tuning = false;
 
   // Cancel autotune
@@ -151,26 +143,18 @@ void disableAutoTune()
   AutoTuneHelper(false);
 }
 
-void AutoTuneHelper(boolean start)
-{
-  if (start)
-  {
+void AutoTuneHelper(boolean start) {
+  if (start) {
     ATuneModeRemember = myPID.GetMode();
-  }
-  else
-  {
+  } else {
     myPID.SetMode(ATuneModeRemember);
   }
 }
 
 // Round down to 2 decimal places
-double round2(double value)
-{
-  return (int)(value * 100 + 0.5) / 100.0;
-}
+double round2(double value) { return (int)(value * 100 + 0.5) / 100.0; }
 
-char *genJSON()
-{
+char *genJSON() {
   DynamicJsonDocument doc(256);
   doc["Uptime"] = now / 1000;
   doc["Setpoint"] = round2(tempDesired);
@@ -184,49 +168,38 @@ char *genJSON()
   return jsonresult;
 }
 
-void handleJSON()
-{
-  server.send(200, "application/json", String(genJSON()));
-}
+void handleJSON() { server.send(200, "application/json", String(genJSON())); }
 
-void handleSetvals()
-{
+void handleSetvals() {
   String message;
 
   String setpoint_val = server.arg("setpoint");
 
-  if (setpoint_val != NULL)
-  {
+  if (setpoint_val != NULL) {
     double setpoint_tmp = setpoint_val.toFloat();
-    if (setpoint_tmp <= 221.1 && setpoint_tmp > 0.1)
-    {
+    if (setpoint_tmp <= 221.1 && setpoint_tmp > 0.1) {
       tempDesired = setpoint_tmp;
       message += "Setpoint: " + setpoint_val;
       message += "\n";
-    }
-    else
-    {
+    } else {
       message += "Setpoint: " + String(setpoint_val) + " is invalid\n";
     }
   }
 
   String kp_val = server.arg("kp");
-  if (kp_val != NULL)
-  {
+  if (kp_val != NULL) {
     Kp = kp_val.toFloat();
     message += "Kp: " + kp_val;
   }
 
   String ki_val = server.arg("ki");
-  if (ki_val != NULL)
-  {
+  if (ki_val != NULL) {
     Ki = ki_val.toFloat();
     message += "Ki: " + ki_val;
   }
 
   String kd_val = server.arg("kd");
-  if (kd_val != NULL)
-  {
+  if (kd_val != NULL) {
     Kd = kd_val.toFloat();
     message += "Kd: " + kd_val;
   }
@@ -234,64 +207,54 @@ void handleSetvals()
   server.send(200, "text/plain", message);
 }
 
-void handleSave()
-{
+void handleSave() {
   writeConfigValuesToEEPROM();
 
   server.send(200, "text/plain", "Wrote config to EEPROM.");
 }
 
-void handleAutotuneStart()
-{
-
+void handleAutotuneStart() {
   double step = 750;
   String step_val = server.arg("step");
-  if (step_val != NULL)
-  {
+  if (step_val != NULL) {
     step = step_val.toFloat();
   }
 
   double noise = 1;
   String noise_val = server.arg("noise");
-  if (noise_val != NULL)
-  {
+  if (noise_val != NULL) {
     noise = noise_val.toFloat();
   }
 
   unsigned int lookback = 20;
   String lookback_val = server.arg("lookback");
-  if (lookback_val != NULL)
-  {
+  if (lookback_val != NULL) {
     lookback = lookback_val.toInt();
   }
 
-  String message = "Autotune started: noise(" + String(noise) + ") " + "step(" + String(step) + ") lookback(" + String(lookback) + ")";
+  String message = "Autotune started: noise(" + String(noise) + ") " + "step(" +
+                   String(step) + ") lookback(" + String(lookback) + ")";
   enableAutoTune(step, noise, lookback);
   server.send(200, "text/plain", message);
 }
 
-void handleAutotuneStop()
-{
+void handleAutotuneStop() {
   disableAutoTune();
   server.send(200, "text/plain", "Autotune stopped.");
 }
 
-void controlRelay()
-{
+void controlRelay() {
   // Provide the PID loop with the current temperature
   Input = tempActual;
 
   // Safety to turn off if max temp is exceeded
-  if (Input >= maxBoilerTemp)
-  {
+  if (Input >= maxBoilerTemp) {
     digitalWrite(relayPin, LOW);
     return;
   }
 
-  if (tuning)
-  {
-    if (aTune.Runtime())
-    {
+  if (tuning) {
+    if (aTune.Runtime()) {
       tuning = false;
 
       // We're done, set the tuning parameters
@@ -301,34 +264,28 @@ void controlRelay()
       myPID.SetTunings(Kp, Ki, Kd);
       AutoTuneHelper(false);
     }
-  }
-  else
-  {
+  } else {
     myPID.Compute();
   }
 
   // Starts a new PWM cycle every WindowSize milliseconds
-  if (WindowSize < (now - windowStartTime))
-  {
+  if (WindowSize < (now - windowStartTime)) {
     windowStartTime += WindowSize;
   }
 
-  // Calculate the number of milliseconds that have passed in the current PWM cycle.
-  // If that is less than the Output value, the relay is turned ON
-  // If that is greater than (or equal to) the Output value, the relay is turned OFF.
+  // Calculate the number of milliseconds that have passed in the current PWM
+  // cycle. If that is less than the Output value, the relay is turned ON If
+  // that is greater than (or equal to) the Output value, the relay is turned
+  // OFF.
   PWMOutput = Output * (WindowSize / 100.00);
-  if ((PWMOutput > 100) && (PWMOutput > (now - windowStartTime)))
-  {
+  if ((PWMOutput > 100) && (PWMOutput > (now - windowStartTime))) {
     digitalWrite(relayPin, HIGH);
-  }
-  else
-  {
+  } else {
     digitalWrite(relayPin, LOW);
   }
 }
 
-void writeConfigValuesToEEPROM()
-{
+void writeConfigValuesToEEPROM() {
   // Store config values to eeprom
   EEPROM.begin(sizeof(double) * 4);
 
@@ -345,13 +302,11 @@ void writeConfigValuesToEEPROM()
   EEPROM.end();
 }
 
-void messageReceived(String &topic, String &payload)
-{
+void messageReceived(String &topic, String &payload) {
   Serial.println("incoming: " + topic + " - " + payload);
 }
 
-void setup()
-{
+void setup() {
   Serial.begin(115200);
   Serial.println("Starting...");
 
@@ -379,8 +334,7 @@ void setup()
   WiFi.mode(WIFI_STA);
   WiFi.begin(ssid, password);
 
-  while (WiFi.status() != WL_CONNECTED)
-  {
+  while (WiFi.status() != WL_CONNECTED) {
     delay(500);
     Serial.print(".");
   }
@@ -416,8 +370,7 @@ void setup()
 
   // TODO SK: Validate the config values
 
-  if (useMQTT)
-  {
+  if (useMQTT) {
     // Start MQTT client
     mqttClient.begin(MQTT_HOST, net);
     mqttClient.onMessage(messageReceived);
@@ -427,14 +380,15 @@ void setup()
     mqttClient.connect("espresso");
     unsigned long mqttConnectElapsedTime = millis() - mqttConnectTimeStart;
 
-    if (mqttClient.connected())
-    {
-      Serial.println("Connected to MQTT broker after " + String(mqttConnectElapsedTime / 1000.0) + " seconds, enabling mqtt!");
+    if (mqttClient.connected()) {
+      Serial.println("Connected to MQTT broker after " +
+                     String(mqttConnectElapsedTime / 1000.0) +
+                     " seconds, enabling mqtt!");
       mqttClient.subscribe(mqttStatusTopicName);
-    }
-    else
-    {
-      Serial.println("Did not connect to MQTT broker after " + String(mqttConnectElapsedTime / 1000.0) + " seconds, disabling mqtt!");
+    } else {
+      Serial.println("Did not connect to MQTT broker after " +
+                     String(mqttConnectElapsedTime / 1000.0) +
+                     " seconds, disabling mqtt!");
       useMQTT = false;
     }
   }
@@ -443,8 +397,7 @@ void setup()
   Serial.println("Booted after " + String(bootTime / 1000.0) + " seconds");
 }
 
-void loop()
-{
+void loop() {
   now = millis();
   tempActual = getTemp();
 
@@ -452,12 +405,10 @@ void loop()
 
   server.handleClient();
 
-  if (useMQTT)
-  {
+  if (useMQTT) {
     // Publish status via mqtt
     mqttClient.loop();
-    if (now - previousMqttStatsMillis > mqttStatsInterval)
-    {
+    if (now - previousMqttStatsMillis > mqttStatsInterval) {
       mqttClient.publish(mqttStatusTopicName, genJSON());
       previousMqttStatsMillis = now;
     }
