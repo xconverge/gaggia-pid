@@ -24,9 +24,13 @@ unsigned long temporary_steam_duration = 0;
 // This will be the time in milliseconds when the temporary steam setpoint was
 // set
 unsigned long temporary_steam_start_time = 0;
-// How close (deg F) to steam target before handing control back to PID.
-// During boost phase heater runs full-on (subject to safety cutoff).
-const double STEAM_BOOST_DELTA_F = 5.0;
+
+// Bang-bang steam hysteresis (deg F)
+// Heater turns ON when temp <= (steamTemp - STEAM_BANG_HYST_F)
+// and OFF when temp >= steamTemp (one-sided band)
+const double STEAM_BANG_HYST_F = 5.0;
+// This will be true if the steam override is active
+bool steamActive = false;
 
 // This will be the current desired setpoint
 double tempDesired = 220;
@@ -178,6 +182,7 @@ char *genJSON() {
   doc["Ki"] = round2(Ki);
   doc["Kd"] = round2(Kd);
   doc["autotuning"] = tuning;
+  doc["SteamActive"] = steamActive;
 
   serializeJson(doc, jsonresult);
   return jsonresult;
@@ -465,15 +470,17 @@ void loop() {
   tempActual = getTemp();
 
   // Track whether a steam override is armed (nonzero duration & temp).
-  const bool steamActive =
-      (temporary_steam_duration != 0 && temporary_steam_temp != 0);
+  steamActive = (temporary_steam_duration != 0 && temporary_steam_temp != 0);
 
   // We received a temporary steam setpoint and duration so we need to apply it
   if (steamActive) {
-    // Make sure the PID setpoint is the temporary steam setpoint
-    if (currentPIDSetpoint != temporary_steam_temp) {
-      currentPIDSetpoint = temporary_steam_temp;
+    // On entering steam, take PID out of the loop (MANUAL) and record start
+    if (myPID.GetMode() != MANUAL) {
+      myPID.SetMode(MANUAL);
     }
+
+    // Track current steam target for telemetry
+    currentPIDSetpoint = temporary_steam_temp;
 
     if (temporary_steam_start_time == 0) {
       // If this is the first time we set the temporary steam setpoint, record
@@ -488,6 +495,8 @@ void loop() {
         temporary_steam_start_time = 0;
         // Reset to the original desired temperature
         currentPIDSetpoint = tempDesired;
+        // Restore PID control for brew.
+        myPID.SetMode(AUTOMATIC);
       }
     }
   } else {
@@ -504,18 +513,25 @@ void loop() {
     currentPIDSetpoint = maxBoilerTemp - 1;
   }
 
-  // --- Steam boost phase --------------------------------------------------
-  // If steam override active *and* we're still more than STEAM_BOOST_DB_F below
-  // the steam temp, drive heater full-on (fast ramp) instead of PID.
-  // Always honor safety cutoff.
-  if (steamActive && (tempActual + STEAM_BOOST_DELTA_F) < temporary_steam_temp) {
+  // --- Steam bang-bang control ---------------------------------------------
+  if (steamActive) {
+    // Safety first: hard cutoff
     if (tempActual >= maxBoilerTemp) {
-      digitalWrite(relayPin, LOW);  // safety cutoff
-    } else {
-      digitalWrite(relayPin, HIGH);  // bang-bang heat
+      digitalWrite(relayPin, LOW);
+    } else if (tempActual <= (temporary_steam_temp - STEAM_BANG_HYST_F)) {
+      // Below lower band: heater ON
+      digitalWrite(relayPin, HIGH);
+    } else if (tempActual >= temporary_steam_temp) {
+      // At/above steam target: heater OFF
+      digitalWrite(relayPin, LOW);
     }
   } else {
-    // Normal PID time-proportioning control
+    // Ensure PID enabled during brew mode.
+    if (myPID.GetMode() != AUTOMATIC) {
+      myPID.SetMode(AUTOMATIC);
+    }
+
+    // Brew (PID) control
     controlRelay();
   }
 
