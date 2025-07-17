@@ -29,8 +29,6 @@ unsigned long temporary_steam_start_time = 0;
 // Heater turns ON when temp <= (steamTemp - STEAM_BANG_HYST_F)
 // and OFF when temp >= steamTemp (one-sided band)
 const double STEAM_BANG_HYST_F = 5.0;
-// This will be true if the steam override is active
-bool steamActive = false;
 
 // This will be the current desired setpoint
 double tempDesired = 220;
@@ -182,7 +180,6 @@ char *genJSON() {
   doc["Ki"] = round2(Ki);
   doc["Kd"] = round2(Kd);
   doc["autotuning"] = tuning;
-  doc["SteamActive"] = steamActive;
 
   serializeJson(doc, jsonresult);
   return jsonresult;
@@ -308,9 +305,6 @@ void handleAutotuneStop() {
 }
 
 void controlRelay() {
-  // Provide the PID loop with the current temperature
-  Input = tempActual;
-
   // Safety to turn off if max temp is exceeded
   if (Input >= maxBoilerTemp) {
     digitalWrite(relayPin, LOW);
@@ -468,9 +462,11 @@ void setup() {
 void loop() {
   now = millis();
   tempActual = getTemp();
+  // Provide the PID loop with the current temperature
+  Input = tempActual;
 
   // Track whether a steam override is armed (nonzero duration & temp).
-  steamActive = (temporary_steam_duration != 0 && temporary_steam_temp != 0);
+  const bool steamActive = (temporary_steam_duration != 0 && temporary_steam_temp != 0);
 
   // We received a temporary steam setpoint and duration so we need to apply it
   if (steamActive) {
