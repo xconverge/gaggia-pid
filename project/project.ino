@@ -508,7 +508,7 @@ void loop() {
   // If steam override active *and* we're still more than STEAM_BOOST_DB_F below
   // the steam temp, drive heater full-on (fast ramp) instead of PID.
   // Always honor safety cutoff.
-  if (steamActive && (tempActual + STEAM_BOOST_DB_F) < temporary_steam_temp) {
+  if (steamActive && (tempActual + STEAM_BOOST_DELTA_F) < temporary_steam_temp) {
     if (tempActual >= maxBoilerTemp) {
       digitalWrite(relayPin, LOW);  // safety cutoff
     } else {
