@@ -24,6 +24,9 @@ unsigned long temporary_steam_duration = 0;
 // This will be the time in milliseconds when the temporary steam setpoint was
 // set
 unsigned long temporary_steam_start_time = 0;
+// How close (deg F) to steam target before handing control back to PID.
+// During boost phase heater runs full-on (subject to safety cutoff).
+const double STEAM_BOOST_DELTA_F = 5.0;
 
 // This will be the current desired setpoint
 double tempDesired = 220;
@@ -461,8 +464,12 @@ void loop() {
   now = millis();
   tempActual = getTemp();
 
+  // Track whether a steam override is armed (nonzero duration & temp).
+  const bool steamActive =
+      (temporary_steam_duration != 0 && temporary_steam_temp != 0);
+
   // We received a temporary steam setpoint and duration so we need to apply it
-  if (temporary_steam_duration != 0 && temporary_steam_temp != 0) {
+  if (steamActive) {
     // Make sure the PID setpoint is the temporary steam setpoint
     if (currentPIDSetpoint != temporary_steam_temp) {
       currentPIDSetpoint = temporary_steam_temp;
@@ -497,7 +504,20 @@ void loop() {
     currentPIDSetpoint = maxBoilerTemp - 1;
   }
 
-  controlRelay();
+  // --- Steam boost phase --------------------------------------------------
+  // If steam override active *and* we're still more than STEAM_BOOST_DB_F below
+  // the steam temp, drive heater full-on (fast ramp) instead of PID.
+  // Always honor safety cutoff.
+  if (steamActive && (tempActual + STEAM_BOOST_DB_F) < temporary_steam_temp) {
+    if (tempActual >= maxBoilerTemp) {
+      digitalWrite(relayPin, LOW);  // safety cutoff
+    } else {
+      digitalWrite(relayPin, HIGH);  // bang-bang heat
+    }
+  } else {
+    // Normal PID time-proportioning control
+    controlRelay();
+  }
 
   server.handleClient();
 

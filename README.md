@@ -17,7 +17,7 @@ curl -d "setpoint=200" -X POST xxx.xxx.xxx.xxx/set
 Set a temporary steam temp (duration is seconds):
 
 ```
-curl -d "setpoint=295&duration=60" -X POST xxx.xxx.xxx.xxx/steam
+curl -d "setpoint=295&duration=120" -X POST xxx.xxx.xxx.xxx/steam
 ```
 
 Set PID parameters:
