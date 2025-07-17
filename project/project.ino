@@ -17,14 +17,20 @@ int maxSDO = 12; // D6
 int maxSDI = 13; // D7
 int maxCS = 4;   // D2
 
+double temporary_steam_temp = 0; // This will be the temporary steam setpoint
+unsigned long temporary_steam_duration = 0; // This will be the duration in milliseconds for the temporary steam setpoint
+unsigned long temporary_steam_start_time = 0; // This will be the time in milliseconds when the temporary steam setpoint was set
+
 // This will be the current desired setpoint
 double tempDesired = 220;
+
+double currentPIDSetpoint = tempDesired;
 
 // This will be the latest actual reading
 double tempActual = 0;
 
 // Safety value, will always turn off the relay if this is exceeded
-double maxBoilerTemp = 280;
+double maxBoilerTemp = 315;
 
 // PID PWM Window in milliseconds
 const int WindowSize = 5000;
@@ -61,7 +67,7 @@ char jsonresult[512];
 // PID variables
 // Using P_ON_M mode ( http://brettbeauregard.com/blog/2017/06/introducing-proportional-on-measurement/ )
 double Input, Output;
-PID myPID(&Input, &Output, &tempDesired, Kp, Ki, Kd, P_ON_M, DIRECT);
+PID myPID(&Input, &Output, &currentPIDSetpoint, Kp, Ki, Kd, P_ON_M, DIRECT);
 double PWMOutput;
 unsigned long windowStartTime;
 
@@ -173,7 +179,7 @@ char *genJSON()
 {
   DynamicJsonDocument doc(256);
   doc["Uptime"] = now / 1000;
-  doc["Setpoint"] = round2(tempDesired);
+  doc["Setpoint"] = round2(currentPIDSetpoint);
   doc["ActualTemp"] = round2(tempActual);
   doc["Kp"] = round2(Kp);
   doc["Ki"] = round2(Ki);
@@ -239,6 +245,50 @@ void handleSave()
   writeConfigValuesToEEPROM();
 
   server.send(200, "text/plain", "Wrote config to EEPROM.");
+}
+
+// If setpoint is set, it will set temporary_steam_temp, which will persist for
+// the duration specified
+void handleSteam() {
+  if (!(server.hasArg("setpoint") && server.hasArg("duration"))) {
+    server.send(400, "text/plain",
+                "Error: setpoint and duration are both required.");
+    return;
+  }
+
+  String setpoint_val = server.arg("setpoint");
+  String duration_val = server.arg("duration");
+
+  float setpoint_tmp = setpoint_val.toFloat();
+  float duration_tmp = duration_val.toFloat();  // seconds
+
+  String message;
+  bool ok = true;
+
+  // bounds
+  if (!(setpoint_tmp > 0.1f && setpoint_tmp <= 305.0f)) {
+    message += "Invalid steam setpoint: " + setpoint_val + "\n";
+    ok = false;
+  }
+  // Max 20 min, min 0.1 s
+  if (!(duration_tmp > 0.1f && duration_tmp <= (60.0f * 20.0f))) {
+    message += "Invalid steam duration: " + duration_val + "\n";
+    ok = false;
+  }
+
+  if (!ok) {
+    server.send(400, "text/plain", message);
+    return;
+  }
+
+  // Accept: convert to ms, arm new cycle
+  temporary_steam_temp = setpoint_tmp;
+  temporary_steam_duration = (unsigned long)(duration_tmp * 1000.0f);
+  temporary_steam_start_time = 0;  // force fresh start next loop()
+
+  message = "Steam setpoint: " + setpoint_val + "\n";
+  message += "Steam duration: " + duration_val + "s\n";
+  server.send(200, "text/plain", message);
 }
 
 void handleAutotuneStart()
@@ -393,6 +443,7 @@ void setup()
 
   server.on("/json", handleJSON);
   server.on("/set", HTTP_POST, handleSetvals);
+  server.on("/steam", HTTP_POST, handleSteam);
   server.on("/save", HTTP_POST, handleSave);
   server.on("/autotunestart", HTTP_POST, handleAutotuneStart);
   server.on("/autotunestop", HTTP_POST, handleAutotuneStop);
@@ -413,6 +464,9 @@ void setup()
   EEaddress += sizeof(Ki);
   EEPROM.get(EEaddress, Kd);
   EEPROM.end();
+
+  // Set the PID setpoint to the desired temperature
+  currentPIDSetpoint = tempDesired;
 
   // TODO SK: Validate the config values
 
@@ -443,10 +497,42 @@ void setup()
   Serial.println("Booted after " + String(bootTime / 1000.0) + " seconds");
 }
 
-void loop()
-{
+void loop() {
   now = millis();
   tempActual = getTemp();
+
+  // We received a temporary steam setpoint and duration so we need to apply it
+  if (temporary_steam_duration != 0 && temporary_steam_temp != 0) {
+    // Make sure the PID setpoint is the temporary steam setpoint
+    currentPIDSetpoint = temporary_steam_temp;
+
+    if (temporary_steam_start_time == 0) {
+      // If this is the first time we set the temporary steam setpoint, record
+      // the start time
+      temporary_steam_start_time = now;
+    } else {
+      // If we already have a start time, check if we need to update it
+      if (now - temporary_steam_start_time >= temporary_steam_duration) {
+        // If the duration has passed, reset the temporary steam setpoint
+        temporary_steam_temp = 0;
+        temporary_steam_duration = 0;
+        currentPIDSetpoint =
+            tempDesired;  // Reset to the original desired temperature
+      }
+    }
+  } else {
+    // If no temporary steam setpoint, use the original desired temperature
+    if (currentPIDSetpoint != tempDesired) {
+      // If the current PID setpoint is not the desired temperature, reset it
+      // This is to ensure that we don't keep the temporary steam setpoint if it
+      // was not set or if it has expired
+      currentPIDSetpoint = tempDesired;
+    }
+  }
+
+  if (currentPIDSetpoint > maxBoilerTemp - 1) {
+    currentPIDSetpoint = maxBoilerTemp - 1;
+  }
 
   controlRelay();
 
