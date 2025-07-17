@@ -28,6 +28,8 @@ unsigned long temporary_steam_start_time = 0;
 // This will be the current desired setpoint
 double tempDesired = 220;
 
+// This is the actual PID setpoint, it is usually set to the tempDesired value
+// but can be overridden temporarily with the temporary_steam_temp
 double currentPIDSetpoint = tempDesired;
 
 // This will be the latest actual reading
