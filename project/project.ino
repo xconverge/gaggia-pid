@@ -305,6 +305,9 @@ void handleAutotuneStop() {
 }
 
 void controlRelay() {
+  // Provide the PID loop with the current temperature
+  Input = tempActual;
+
   // Safety to turn off if max temp is exceeded
   if (Input >= maxBoilerTemp) {
     digitalWrite(relayPin, LOW);
